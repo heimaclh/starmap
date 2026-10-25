@@ -249,8 +249,12 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- 访问控制（--lan 模式） ----
     def auth_ok(self, u):
-        """静态管理台页面不设防（无秘密），/api 与 /media 需要访问码 Cookie"""
+        """静态管理台页面不设防（无秘密），/api 与 /media 需要访问码 Cookie。
+        来自本机回环的请求视为机主本人，直接放行（手机的请求经端口转发进来，
+        源地址是 Windows 的 vEthernet 网关，不会是 127.0.0.1）。"""
         if not LAN_MODE:
+            return True
+        if self.client_address[0] in ('127.0.0.1', '::1'):
             return True
         if u.path == '/' or u.path.startswith('/admin') or u.path.startswith('/vendor/'):
             return True

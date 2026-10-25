@@ -17,7 +17,7 @@ fi
 # 尝试以管理员权限自动配置端口转发 + 防火墙（只弹一次 UAC；先删旧规则保证可重复运行）
 if command -v powershell.exe >/dev/null 2>&1; then
   echo "✦ 正在请求管理员权限配置端口转发（Windows 会弹 UAC 窗口，请点「是」）…"
-  powershell.exe -NoProfile -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command','netsh interface portproxy delete v4tov4 listenport=8123 2>NUL; netsh interface portproxy delete v4tov4 listenport=8124 2>NUL; netsh interface portproxy add v4tov4 listenport=8123 connectaddress=$WSL_IP connectport=8123; netsh interface portproxy add v4tov4 listenport=8124 connectaddress=$WSL_IP connectport=8124; Remove-NetFirewallRule -DisplayName starmap -ErrorAction SilentlyContinue; New-NetFirewallRule -DisplayName starmap -Direction Inbound -LocalPort 8123-8124 -Protocol TCP -Action Allow; exit'" 2>/dev/null || true
+  powershell.exe -NoProfile -Command "Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-Command','netsh interface portproxy delete v4tov4 listenport=8123 2>\$null | Out-Null; netsh interface portproxy delete v4tov4 listenport=8124 2>\$null | Out-Null; netsh interface portproxy add v4tov4 listenport=8123 connectaddress=$WSL_IP connectport=8123 | Out-Null; netsh interface portproxy add v4tov4 listenport=8124 connectaddress=$WSL_IP connectport=8124 | Out-Null; Remove-NetFirewallRule -DisplayName starmap -ErrorAction SilentlyContinue; New-NetFirewallRule -DisplayName starmap -Direction Inbound -LocalPort 8123-8124 -Protocol TCP -Action Allow | Out-Null; exit'" 2>/dev/null || true
   sleep 2
 fi
 
