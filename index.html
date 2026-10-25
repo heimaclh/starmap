@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 隐私：不让搜索引擎收录这个站点 -->
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>✦</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ffd9a0' d='M12 2l2.4 6.9L21 11l-6.6 2.1L12 20l-2.4-6.9L3 11l6.6-2.1z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<div id="progress" aria-hidden="true"></div>
+
+<!-- 解锁门 -->
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-star">✦</div>
+    <h1 class="gate-title">这片宇宙上了锁</h1>
+    <p class="gate-hint">输入我们的暗号，点亮只属于我们的星图</p>
+    <form id="gate-form" autocomplete="off">
+      <input id="gate-input" type="password" placeholder="我们的暗号" autocomplete="off" spellcheck="false">
+      <button id="gate-btn" type="submit">解锁</button>
+    </form>
+    <p id="gate-error" class="gate-error" hidden>暗号不对哦，再想想 ✦</p>
+    <p class="gate-foot">照片与文字均已加密 · 没有暗号谁都打不开</p>
+  </div>
+</div>
+
+<!-- 主应用 -->
+<main id="app" hidden>
+  <header class="hero">
+    <p class="hero-kicker">✦ OUR STARMAP ✦</p>
+    <h1 id="site-title" class="hero-title"></h1>
+    <p id="site-subtitle" class="hero-sub"></p>
+    <div id="stats" class="stats"></div>
+    <div id="scroll-hint" class="scroll-hint"><span>下滑，走进我们的故事</span><i>▾</i></div>
+  </header>
+
+  <nav class="tabs" aria-label="视图切换">
+    <button class="tab is-active" data-view="trail">✦ 星轨</button>
+    <button class="tab" data-view="timeline">✦ 时间线</button>
+    <button class="tab" data-view="wall">✦ 照片墙</button>
+  </nav>
+
+  <section id="view-trail" class="view">
+    <div class="trail-wrap">
+      <div id="trail-map"></div>
+      <p id="trail-caption" class="trail-caption"></p>
+      <div id="trail-chips" class="trail-chips"></div>
+    </div>
+  </section>
+
+  <section id="view-timeline" class="view" hidden></section>
+  <section id="view-wall" class="view" hidden></section>
+
+  <footer class="foot"><p id="site-footer"></p></footer>
+</main>
+
+<!-- 章节详情 -->
+<div id="detail" hidden>
+  <button class="dt-close" aria-label="关闭">✕</button>
+  <article class="dt-card">
+    <header class="dt-head">
+      <p id="dt-chapter" class="dt-chapter"></p>
+      <h2 id="dt-title" class="dt-title"></h2>
+      <p class="dt-meta"><span id="dt-date" class="dt-date"></span><span id="dt-loc" class="dt-loc"></span></p>
+      <p id="dt-lead" class="dt-lead"></p>
+    </header>
+    <div id="dt-story" class="dt-story"></div>
+    <div id="dt-more-h" class="dt-more-h" hidden>✦ 更多瞬间</div>
+    <div id="dt-gallery" class="dt-gallery"></div>
+    <div id="dt-map" class="dt-map"></div>
+    <nav class="dt-nav">
+      <button id="dt-prev" class="dt-nav-btn prev"></button>
+      <button id="dt-next" class="dt-nav-btn next"></button>
+    </nav>
+  </article>
+</div>
+
+<!-- 灯箱 -->
+<div id="lightbox" hidden>
+  <button class="lb-close" aria-label="关闭">✕</button>
+  <button class="lb-prev" aria-label="上一张">‹</button>
+  <figure class="lb-body">
+    <img id="lb-img" alt="">
+    <figcaption id="lb-cap"></figcaption>
+    <p id="lb-count" class="lb-count"></p>
+  </figure>
+  <button class="lb-next" aria-label="下一张">›</button>
+</div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="config.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
