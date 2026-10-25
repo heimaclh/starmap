@@ -406,6 +406,27 @@ article.trip:nth-of-type(even)::before { left: -49px; }
 .lb-prev { left: 22px; top: 50%; transform: translateY(-50%); }
 .lb-next { right: 22px; top: 50%; transform: translateY(-50%); }
 
+/* 视频角标 */
+.play {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.play i {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-style: normal; font-size: 13px; color: var(--gold);
+  background: rgba(4, 6, 13, 0.55);
+  border: 1px solid rgba(255, 217, 160, 0.7);
+  box-shadow: 0 0 16px rgba(255, 217, 160, 0.45);
+}
+.play.big i { width: 46px; height: 46px; font-size: 17px; }
+#lb-video {
+  max-width: 92vw; max-height: 76vh;
+  border-radius: 10px; border: 1px solid var(--line);
+  background: #000; box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
+}
+
 /* ===== 页脚 ===== */
 .foot { text-align: center; padding: 30px 20px 46px; }
 .foot p { color: rgba(148, 160, 194, 0.55); font-size: 13px; letter-spacing: 2px; margin: 0; }
