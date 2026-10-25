@@ -37,7 +37,7 @@ import build as sitebuild  # 复用 extract_gps 等函数；build.py 的 main �
 ROOT = Path(__file__).resolve().parent
 TRIPS = ROOT / 'trips.json'
 SECRET = ROOT / 'secret.txt'
-ADMIN_PORT, PREVIEW_PORT = 8124, 8123
+ADMIN_PORT, PREVIEW_PORT, LOCAL_PORT = 8124, 8123, 8125
 ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'}
 SAFE_TRIP_ID = re.compile(r'^[a-z0-9][a-z0-9-]{0,40}$')
 COOKIE = 'starmap_admin'
@@ -313,9 +313,11 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- 访问控制（--lan 模式） ----
     def auth_ok(self, u):
-        """静态管理台页面不设防（无秘密），/api 与 /media 需要访问码 Cookie。
-        来自本机回环的请求视为机主本人，直接放行（手机的请求经端口转发进来，
-        源地址是 Windows 的 vEthernet 网关，不会是 127.0.0.1）。"""
+        """绑定在 127.0.0.1 的 trusted 服务只可能被机主自己的电脑访问到，直接放行；
+        LAN 服务（0.0.0.0）上 /api 与 /media 需要访问码 Cookie（静态页面无秘密不设防）。
+        手机的请求经端口转发进来，源地址是 Windows 的 vEthernet 网关，不在豁免之列。"""
+        if getattr(self.server, 'trusted', False):
+            return True
         if not LAN_MODE:
             return True
         if self.client_address[0] in ('127.0.0.1', '::1'):
@@ -581,15 +583,27 @@ def main():
     except OSError:
         sys.exit(f'✗ 端口 {ADMIN_PORT} 已被占用——多半已经有一个管理台在运行。\n'
                  f'  先关掉旧的（在它的终端按 Ctrl+C，或关闭那个窗口），再运行本命令。')
+    srv.trusted = False
+
+    if LAN_MODE:
+        # 本机免密入口：只监听 127.0.0.1，局域网设备物理上无法到达
+        try:
+            local = ThreadingHTTPServer(('127.0.0.1', LOCAL_PORT), Handler)
+            local.trusted = True
+            threading.Thread(target=local.serve_forever, daemon=True).start()
+        except OSError:
+            print(f'（本机免密端口 {LOCAL_PORT} 被占用，电脑访问请用 {ADMIN_PORT} 并输入访问码）')
 
     print(f'✦ 管理台    http://localhost:{ADMIN_PORT}  （Ctrl+C 退出）')
     if LAN_MODE:
         ip = lan_ip()
         print()
         print(f'  ┌─────────── 手机访问（同一 Wi-Fi） ───────────┐')
-        print(f'  │  地址:  http://{ip}:{ADMIN_PORT}')
-        print(f'  │  访问码: {ACCESS_TOKEN}')
-        print(f'  │  预览:  http://{ip}:{PREVIEW_PORT}')
+        print(f'  │  手机地址: http://{ip}:{ADMIN_PORT}')
+        print(f'  │  访问码:   {ACCESS_TOKEN}')
+        print(f'  │  预览:     http://{ip}:{PREVIEW_PORT}')
+        print(f'  │  ─────────────────────────────────────────')
+        print(f'  │  电脑免密: http://localhost:{LOCAL_PORT}')
         print(f'  └──────────────────────────────────────────────┘')
         print('  若手机打不开：Windows 需做一次端口转发，运行 ./mobile.sh 可自动配置')
     try:
