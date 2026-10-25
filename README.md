@@ -115,4 +115,7 @@ git subtree push --prefix dist origin gh-pages
 
 ## 支持的格式
 
-JPG / PNG / WebP，iPhone 的 HEIC 需要先装：`pip3 install pillow-heif`
+- 照片：JPG / PNG / WebP，iPhone 的 HEIC 需要先装 `pip3 install pillow-heif`
+- 视频：MP4 / MOV / M4V / WebM。构建时自动用 ffmpeg 转码成 720p H.264（已内置 imageio-ffmpeg），
+  并抽取一帧做封面海报；超过 150 MB 的视频会跳过并提示。视频和照片一样支持说明、地图定位、
+  灯箱播放，时间线/照片墙/详情页混排展示。

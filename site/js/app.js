@@ -128,7 +128,7 @@
     const cacheKey = `${kind}${id}`;
     if (!photoURLs.has(cacheKey)) {
       const file = `${kind}${String(id).padStart(4, '0')}.bin`;
-      const blob = new Blob([await decryptBin(`a/${file}`)], { type: 'image/jpeg' });
+      const blob = new Blob([await decryptBin(`a/${file}`)], { type: kind === 'v' ? 'video/mp4' : 'image/jpeg' });
       photoURLs.set(cacheKey, URL.createObjectURL(blob));
     }
     return photoURLs.get(cacheKey);
@@ -307,7 +307,16 @@
   }
 
   function tripPoint(t) {
-    return t.coords || (t.photos.find((p) => p.coords) || {}).coords || null;
+    const media = [...(t.photos || []), ...(t.videos || [])];
+    return t.coords || (media.find((p) => p.coords) || {}).coords || null;
+  }
+
+  /* 照片 + 视频统一成 media 列表（视频的 poster 是一张加密缩略图） */
+  function tripMedia(t) {
+    return [
+      ...(t.photos || []).map((p) => ({ ...p, type: 'photo' })),
+      ...(t.videos || []).map((v) => ({ ...v, type: 'video' })),
+    ];
   }
 
   /* 日期区间显示：同一年时结束日期省略年份 */
@@ -369,11 +378,11 @@
     typeSubtitle(site.subtitle);
 
     // 统计栏
-    const nPhotos = state.sorted.reduce((s, t) => s + t.photos.length, 0);
+    const nMedia = state.sorted.reduce((s, t) => s + (t.photos || []).length + (t.videos || []).length, 0);
     const km = totalKm();
     const stats = [
       [state.sorted.length, '座城市'],
-      [nPhotos, '个瞬间'],
+      [nMedia, '个瞬间'],
     ];
     if (km >= 20) stats.push([Math.round(km / 10) * 10, '公里星轨']);
     if (site.anniversary) {
@@ -481,12 +490,14 @@
     const view = $('#view-timeline');
     view.innerHTML = '<div class="tl-track"><div class="tl-fill"></div></div>'
       + state.sorted.map((trip, ti) => {
-        const strip = trip.photos.slice(0, STRIP_COUNT).map((p) => `
-          <div class="ph" data-id="${p.id}" data-kind="t">
-            <img data-src="" alt="${escapeHTML(p.caption)}">
+        const media = tripMedia(trip);
+        const strip = media.slice(0, STRIP_COUNT).map((m, mi) => `
+          <div class="ph${m.type === 'video' ? ' vid' : ''}" data-mi="${mi}" data-id="${m.type === 'video' ? m.poster : m.id}" data-kind="t">
+            <img data-src="" alt="${escapeHTML(m.caption)}">
+            ${m.type === 'video' ? '<span class="play"><i>▶</i></span>' : ''}
           </div>`).join('')
-        + (trip.photos.length > STRIP_COUNT
-          ? `<div class="ph more" data-trip="${ti}">+${trip.photos.length - STRIP_COUNT}</div>`
+        + (media.length > STRIP_COUNT
+          ? `<div class="ph more" data-trip="${ti}">+${media.length - STRIP_COUNT}</div>`
           : '');
         return `
         <article class="trip" data-id="${trip.id}" data-trip="${ti}">
@@ -515,9 +526,9 @@
     view.querySelectorAll('.trip-strip .ph').forEach((el) => {
       el.addEventListener('click', () => {
         const ti = +el.closest('.trip').dataset.trip;
-        const photos = state.sorted[ti].photos;
-        const id = el.dataset.id ? +el.dataset.id : photos[0].id;
-        openLightbox(photos, photos.findIndex((p) => p.id === id), state.sorted[ti]);
+        const media = tripMedia(state.sorted[ti]);
+        const mi = el.dataset.mi ? +el.dataset.mi : 0;
+        openLightbox(media, mi, state.sorted[ti]);
       });
     });
     lazyMaps(view);
@@ -535,7 +546,7 @@
     addBase(map);
     state.maps.push(map);
 
-    const points = trip.photos.filter((p) => p.coords);
+    const points = tripMedia(trip).filter((p) => p.coords);
     const markers = [];
     const dot = (cls) => L.divIcon({ className: `map-dot ${cls || ''}`, html: '<i></i>', iconSize: [12, 12] });
     for (const p of points) {
@@ -587,18 +598,19 @@
   }
 
   /* ---------- 照片墙 ---------- */
-  function allPhotos() {
-    return state.sorted.flatMap((trip) => trip.photos.map((p) => ({ ...p, trip })));
+  function allMedia() {
+    return state.sorted.flatMap((trip) => tripMedia(trip).map((m) => ({ ...m, trip })));
   }
 
   function renderWall() {
     const view = $('#view-wall');
-    const photos = allPhotos();
-    view.innerHTML = photos.map((p, i) => `
-      <div class="wall-tile" data-idx="${i}" style="aspect-ratio:${p.w}/${p.h}; transition-delay:${(i % 8) * 45}ms">
-        <div data-id="${p.id}" data-kind="t"><img alt="${escapeHTML(p.caption)}"></div>
+    const media = allMedia();
+    view.innerHTML = media.map((p, i) => `
+      <div class="wall-tile" data-idx="${i}" style="aspect-ratio:${(p.w || 4)}/${(p.h || 3)}; transition-delay:${(i % 8) * 45}ms">
+        <div data-id="${p.type === 'video' ? p.poster : p.id}" data-kind="t"><img alt="${escapeHTML(p.caption)}"></div>
+        ${p.type === 'video' ? '<span class="play big"><i>▶</i></span>' : ''}
         <div class="wall-cap">${escapeHTML(p.caption || '✦')}
-          <small>${escapeHTML(p.trip.location)} · ${escapeHTML(p.trip.date)}</small>
+          <small>${escapeHTML(p.trip.location)} · ${escapeHTML(dateRange(p.trip))}</small>
         </div>
       </div>`).join('');
 
@@ -611,7 +623,7 @@
 
     lazyImages(view);
     view.querySelectorAll('.wall-tile').forEach((el) => {
-      el.addEventListener('click', () => openLightbox(photos, +el.dataset.idx, null));
+      el.addEventListener('click', () => openLightbox(media, +el.dataset.idx, null));
     });
 
     if (!reduced && matchMedia('(pointer: fine)').matches) bindTilt(view);
@@ -666,18 +678,23 @@
       el.addEventListener('click', () => openLightbox(trip.photos, +el.dataset.i, trip))
     );
 
-    // 没被正文引用的照片 → 「更多瞬间」画廊
-    const rest = trip.photos.map((p, i) => ({ p, i })).filter(({ i }) => !used.has(i));
+    // 没被正文引用的照片 + 全部视频 → 「更多瞬间」画廊
+    const media = tripMedia(trip);
+    let pi = -1;
+    const rest = media
+      .map((m, mi) => ({ m, mi, photoIdx: m.type === 'photo' ? ++pi : null }))
+      .filter(({ m, photoIdx }) => m.type === 'video' || !used.has(photoIdx));
     $('#dt-more-h').hidden = !rest.length;
     const galleryEl = $('#dt-gallery');
-    galleryEl.innerHTML = rest.map(({ p, i }) => `
-      <div class="dt-ph" style="aspect-ratio:${p.w}/${p.h}" data-id="${p.id}" data-kind="t" data-i="${i}">
-        <img alt="${escapeHTML(p.caption)}">
-        <span class="dt-cap">${escapeHTML(p.caption || trip.location)}</span>
+    galleryEl.innerHTML = rest.map(({ m, mi }) => `
+      <div class="dt-ph" style="aspect-ratio:${(m.w || 4)}/${(m.h || 3)}" data-id="${m.type === 'video' ? m.poster : m.id}" data-kind="t" data-mi="${mi}">
+        <img alt="${escapeHTML(m.caption)}">
+        ${m.type === 'video' ? '<span class="play"><i>▶</i></span>' : ''}
+        <span class="dt-cap">${escapeHTML(m.caption || trip.location)}</span>
       </div>`).join('');
     lazyImages(galleryEl);
     galleryEl.querySelectorAll('.dt-ph').forEach((el) =>
-      el.addEventListener('click', () => openLightbox(trip.photos, +el.dataset.i, trip))
+      el.addEventListener('click', () => openLightbox(media, +el.dataset.mi, trip))
     );
   }
 
@@ -780,16 +797,35 @@
     state.lb.idx = idx;
     const p = list[idx];
     const img = $('#lb-img');
-    img.classList.remove('on');
-    img.src = await photoURL(p.id, 'f');
-    requestAnimationFrame(() => img.classList.add('on'));
+    const vid = $('#lb-video');
+
+    if (p.type === 'video') {
+      // 视频：解密整段 → Blob 播放（URL 在 photoURLs 缓存中复用，勿 revoke）
+      vid.pause();
+      img.hidden = true;
+      img.classList.remove('on');
+      vid.hidden = false;
+      if (p.poster) vid.poster = await photoURL(p.poster, 't');
+      vid.src = await photoURL(p.id, 'v');
+      vid.play().catch(() => {});
+    } else {
+      vid.pause();
+      vid.hidden = true;
+      vid.removeAttribute('src');
+      img.hidden = false;
+      img.classList.remove('on');
+      img.src = await photoURL(p.id, 'f');
+      requestAnimationFrame(() => img.classList.add('on'));
+    }
     const where = p.trip ? `${p.trip.location} · ${dateRange(p.trip)}` : (state.lb.trip ? `${state.lb.trip.location} · ${dateRange(state.lb.trip)}` : '');
-    $('#lb-cap').innerHTML = `<b>✦</b>${escapeHTML(p.caption || (p.trip ? p.trip.title : '') || (state.lb.trip && state.lb.trip.title) || '')}<span class="where">${escapeHTML(where)}</span>`;
+    const title = p.caption || (p.trip ? p.trip.title : '') || (state.lb.trip && state.lb.trip.title) || '';
+    $('#lb-cap').innerHTML = `<b>✦</b>${escapeHTML(title)}${p.type === 'video' ? ' <span class="where">▶ 视频</span>' : ''}<span class="where">${escapeHTML(where)}</span>`;
     $('#lb-count').textContent = `${idx + 1} / ${list.length}`;
-    // 预热前后两张
+    // 预热前后两张（视频太大不预载）
     if (list.length > 1) {
-      photoURL(list[(idx + 1) % list.length].id, 'f').catch(() => {});
-      photoURL(list[(idx - 1 + list.length) % list.length].id, 'f').catch(() => {});
+      const nxt = list[(idx + 1) % list.length], prv = list[(idx - 1 + list.length) % list.length];
+      if (nxt.type !== 'video') photoURL(nxt.id, 'f').catch(() => {});
+      if (prv.type !== 'video') photoURL(prv.id, 'f').catch(() => {});
     }
   }
 

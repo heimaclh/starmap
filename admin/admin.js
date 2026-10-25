@@ -7,6 +7,7 @@
   let state = null;        // {site, trips, has_secret}
   let currentId = null;
   let dirtyPhotos = [];    // [{file, caption}]，点「保存修改」才写回
+  let dirtyVideos = [];
 
   /* ---------- 访问码（--lan 手机模式） ---------- */
   let authBusy = false;
@@ -231,8 +232,9 @@
       const li = document.createElement('li');
       li.dataset.id = t.id;
       li.className = t.id === currentId ? 'active' : '';
+      const n = (t.photos || []).length + (t.videos || []).length;
       li.innerHTML = `<span class="t">${esc(t.title)}</span>
-        <span class="m">${esc(dateLabel(t))} · ${t.photos.length} 张</span>`;
+        <span class="m">${esc(dateLabel(t))} · ${n} 个</span>`;
       li.addEventListener('click', () => selectTrip(t.id));
       ul.appendChild(li);
     }
@@ -244,10 +246,11 @@
 
   function selectTrip(id) {
     currentId = id;
-    dirtyPhotos = currentTrip().photos.map((p) => ({ file: p.file, caption: p.caption }));
+    const t = currentTrip();
+    dirtyPhotos = (t.photos || []).map((p) => ({ file: p.file, caption: p.caption }));
+    dirtyVideos = (t.videos || []).map((p) => ({ file: p.file, caption: p.caption }));
     $('#editor-empty').hidden = true;
     $('#editor-body').hidden = false;
-    const t = currentTrip();
     $('#f-title').value = t.title;
     $('#f-date').value = t.date || '';
     $('#f-date-end').value = t.end || '';
@@ -260,28 +263,38 @@
 
   function renderPhotos() {
     const t = currentTrip();
-    $('#photo-count').textContent = `${t.photos.length} 张（${dirtyPhotos.filter((p) => !p.caption).length} 张未写说明）`;
+    const all = [
+      ...dirtyPhotos.map((p, idx) => ({ p, idx, isVideo: false })),
+      ...dirtyVideos.map((p, idx) => ({ p, idx, isVideo: true })),
+    ];
+    $('#photo-count').textContent = `${all.length} 个（${all.filter((x) => !x.p.caption).length} 个未写说明）`;
     const grid = $('#photo-grid');
     grid.innerHTML = '';
-    dirtyPhotos.forEach((p, i) => {
+    all.forEach(({ p, idx, isVideo }) => {
       const card = document.createElement('div');
       card.className = 'ph-card';
-      const meta = t.photos.find((x) => x.file === p.file) || {};
+      const meta = (t.photos || []).find((x) => x.file === p.file)
+        || (t.videos || []).find((x) => x.file === p.file) || {};
+      const media = isVideo
+        ? `<video src="/media/${encodeURIComponent(p.file)}" preload="metadata" muted playsinline></video><span class="vidtag">▶ 视频</span>`
+        : `<img loading="lazy" src="/media/${encodeURIComponent(p.file)}" alt=""
+               onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'该格式无法预览（如 HEIC），不影响构建',style:'padding:20px;font-size:12px;color:#94a0c2'}))">`;
       card.innerHTML = `
         <div class="box">
-          <img loading="lazy" src="/media/${encodeURIComponent(p.file)}" alt=""
-               onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'该格式无法预览（如 HEIC），不影响构建',style:'padding:20px;font-size:12px;color:#94a0c2'}))">
+          ${media}
           <button class="geo ${meta.coords ? 'on' : ''}" title="在地图上设置/修改拍摄地点">📍 ${meta.coords ? '已定位' : '设位置'}</button>
           <button class="del" title="从网站移除">✕</button>
         </div>
-        <textarea rows="2" placeholder="写一段描述…（会显示在照片下方）">${esc(p.caption)}</textarea>`;
+        <textarea rows="2" placeholder="${isVideo ? '给这段视频写一段描述…' : '写一段描述…'}（会显示在下方）">${esc(p.caption)}</textarea>`;
+      card.querySelector('textarea').addEventListener('input', (e) => {
+        (isVideo ? dirtyVideos : dirtyPhotos)[idx].caption = e.target.value;
+      });
       card.querySelector('.geo').addEventListener('click', () =>
         openGeo(currentId, p.file, meta.coords || null, t.coords || null));
-      card.querySelector('textarea').addEventListener('input', (e) => { dirtyPhotos[i].caption = e.target.value; });
       card.querySelector('.del').addEventListener('click', async () => {
-        if (!confirm('从网站移除这张照片？（原图仍保留在本机 photos/ 目录）')) return;
+        if (!confirm('从网站移除这个文件？（原文件仍保留在本机 photos/ 目录）')) return;
         await api(`/api/photo/${currentId}?file=${encodeURIComponent(p.file)}`, { method: 'DELETE' });
-        dirtyPhotos.splice(i, 1);
+        (isVideo ? dirtyVideos : dirtyPhotos).splice(idx, 1);
         await loadState();
         selectTrip(currentId);
         toast('已移除');
@@ -303,6 +316,7 @@
         description: $('#f-desc').value,
         story: $('#f-story').value,
         photos: dirtyPhotos,
+        videos: dirtyVideos,
       }),
     });
     await loadState();

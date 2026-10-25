@@ -38,7 +38,9 @@ ROOT = Path(__file__).resolve().parent
 TRIPS = ROOT / 'trips.json'
 SECRET = ROOT / 'secret.txt'
 ADMIN_PORT, PREVIEW_PORT, LOCAL_PORT = 8124, 8123, 8125
-ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'}
+PHOTO_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'}
+VIDEO_EXTS = {'.mp4', '.mov', '.m4v', '.webm'}
+ALLOWED_EXTS = PHOTO_EXTS | VIDEO_EXTS
 SAFE_TRIP_ID = re.compile(r'^[a-z0-9][a-z0-9-]{0,40}$')
 COOKIE = 'starmap_admin'
 
@@ -447,11 +449,15 @@ class Handler(BaseHTTPRequestHandler):
                 s = [p.strip() for p in s.replace('\r\n', '\n').split('\n\n') if p.strip()]
             trip['story'] = [str(p).strip() for p in s if str(p).strip()]
         if 'photos' in body:  # [{file, caption}]，按客户端顺序
-            old = {p['file']: p for p in trip['photos']}
+            old = {p['file']: p for p in trip.get('photos') or []}
             trip['photos'] = [{**old[p['file']], 'caption': str(p.get('caption', ''))}
                               for p in body['photos'] if p['file'] in old]
+        if 'videos' in body:
+            old = {p['file']: p for p in trip.get('videos') or []}
+            trip['videos'] = [{**old[p['file']], 'caption': str(p.get('caption', ''))}
+                              for p in body['videos'] if p['file'] in old]
         if not trip.get('coords'):
-            for p in trip['photos']:
+            for p in (trip.get('photos') or []) + (trip.get('videos') or []):
                 if p.get('coords'):
                     trip['coords'] = p['coords']
                     break
@@ -482,15 +488,22 @@ class Handler(BaseHTTPRequestHandler):
         (folder / name).write_bytes(self.read_bytes())
 
         full = str(folder / name)
-        coords = sitebuild.extract_gps(Path(full))
-        date = exif_date(Path(full))
-        trip['photos'].append({'file': f'{trip_id}/{name}', 'caption': '', 'coords': coords})
+        coords = None
+        date = None
+        is_video = ext in VIDEO_EXTS
+        if not is_video:
+            coords = sitebuild.extract_gps(Path(full))
+            date = exif_date(Path(full))
+            bucket = trip.setdefault('photos', [])
+        else:
+            bucket = trip.setdefault('videos', [])
+        bucket.append({'file': f'{trip_id}/{name}', 'caption': '', 'coords': coords})
         if not trip.get('date') and date:
             trip['date'] = date
         if not trip.get('coords') and coords:
             trip['coords'] = coords
         save_cfg(cfg)
-        resp = {'ok': True, 'file': f'{trip_id}/{name}', 'coords': coords, 'date': date}
+        resp = {'ok': True, 'file': f'{trip_id}/{name}', 'coords': coords, 'date': date, 'type': 'video' if is_video else 'photo'}
         if ext in {'.heic', '.heif'} and not sitebuild.HEIC_OK:
             resp['warning'] = 'HEIC 已上传，但本机缺 pillow-heif，构建时会跳过它。修复：pip3 install pillow-heif --break-system-packages'
         self.reply(resp)
@@ -501,9 +514,15 @@ class Handler(BaseHTTPRequestHandler):
         trip = find_trip(cfg, trip_id)
         if not trip:
             return self.api_error('旅行不存在', 404)
-        trip['photos'] = [p for p in trip['photos'] if p['file'] != rel]
+        removed = False
+        for key in ('photos', 'videos'):
+            bucket = trip.get(key) or []
+            new = [p for p in bucket if p['file'] != rel]
+            if len(new) != len(bucket):
+                trip[key] = new
+                removed = True
         save_cfg(cfg)
-        self.reply({'ok': True, 'note': '已从网站移除；原图保留在 photos/ 目录'})
+        self.reply({'ok': removed, 'note': '已从网站移除；原文件保留在 photos/ 目录'})
 
     def api_photo_geo(self, trip_id):
         """手动设置/清除某张照片的拍摄坐标（WGS-84）"""
@@ -512,9 +531,10 @@ class Handler(BaseHTTPRequestHandler):
         trip = find_trip(cfg, trip_id)
         if not trip:
             return self.api_error('旅行不存在', 404)
-        p = next((x for x in trip['photos'] if x['file'] == body.get('file')), None)
+        p = next((x for x in (trip.get('photos') or []) + (trip.get('videos') or [])
+                  if x['file'] == body.get('file')), None)
         if not p:
-            return self.api_error('照片不存在', 404)
+            return self.api_error('文件不存在', 404)
         coords = body.get('coords')
         if coords:
             try:

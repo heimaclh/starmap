@@ -14,9 +14,13 @@ import getpass
 import hashlib
 import io
 import json
+import math
 import os
+import re
 import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -40,6 +44,31 @@ ITERATIONS = 250_000           # PBKDF2 迭代次数，拖慢暴力破解
 
 BASE_EXTS = {'.jpg', '.jpeg', '.png', '.webp'}
 IMG_EXTS = BASE_EXTS | ({'.heic', '.heif'} if HEIC_OK else set())
+VIDEO_EXTS = {'.mp4', '.mov', '.m4v', '.webm'}
+MAX_VIDEO_BYTES = 150 * 1024 * 1024  # 加密解密都在浏览器内存里做，超大的视频跳过
+
+
+def find_ffmpeg():
+    p = shutil.which('ffmpeg')
+    if p:
+        return p
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+def probe_duration(ffmpeg, src):
+    """从 ffmpeg -i 的 stderr 里解析时长秒数"""
+    try:
+        r = subprocess.run([ffmpeg, '-i', str(src)], capture_output=True, text=True, timeout=120)
+        m = re.search(r'Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)', r.stderr)
+        if m:
+            return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
+    except Exception:
+        pass
+    return None
 
 
 def load_image(src: Path) -> Image.Image:
@@ -118,7 +147,8 @@ def main():
         return iv + aes.encrypt(iv, data, None)
 
     out_trips, warnings, pid = [], [], 0
-    total_full = total_thumb = 0
+    total_full = total_thumb = total_video = 0
+    ffmpeg = find_ffmpeg()
 
     for trip in cfg.get('trips', []):
         photos = []
@@ -145,12 +175,79 @@ def main():
                 'w': w, 'h': h,
             })
 
+        videos = []
+        for vid in trip.get('videos', []):
+            src = ROOT / 'photos' / vid['file']
+            if not src.exists():
+                warnings.append(f'视频不存在，已跳过: photos/{vid["file"]}')
+                continue
+            if src.suffix.lower() not in VIDEO_EXTS:
+                warnings.append(f'不支持的视频格式（{src.suffix}），已跳过: photos/{vid["file"]}')
+                continue
+            if not ffmpeg:
+                warnings.append(f'未找到 ffmpeg，视频无法转码，已跳过: {vid["file"]}（pip3 install imageio-ffmpeg）')
+                continue
+            with tempfile.TemporaryDirectory() as td:
+                out_mp4 = Path(td) / 'out.mp4'
+                try:
+                    r = subprocess.run(
+                        [ffmpeg, '-y', '-i', str(src),
+                         '-vf', "scale='min(1280,iw)':-2",
+                         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26',
+                         '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
+                         str(out_mp4)],
+                        capture_output=True, text=True, timeout=1800)
+                except subprocess.TimeoutExpired:
+                    warnings.append(f'视频转码超时，已跳过: {vid["file"]}')
+                    continue
+                if r.returncode != 0 or not out_mp4.exists():
+                    warnings.append(f'视频转码失败，已跳过: {vid["file"]}')
+                    continue
+                video_b = out_mp4.read_bytes()
+                if len(video_b) > MAX_VIDEO_BYTES:
+                    warnings.append(f'视频过大（{len(video_b) / 1e6:.0f} MB），已跳过: {vid["file"]}')
+                    continue
+
+                poster_jpg = Path(td) / 'poster.jpg'
+                subprocess.run(
+                    [ffmpeg, '-y', '-ss', '1', '-i', str(src), '-frames:v', '1', '-q:v', '3', str(poster_jpg)],
+                    capture_output=True, timeout=300)
+                if not poster_jpg.exists():
+                    subprocess.run([ffmpeg, '-y', '-i', str(src), '-frames:v', '1', '-q:v', '3', str(poster_jpg)],
+                                   capture_output=True, timeout=300)
+
+                pid += 1
+                video_id = pid
+                (assets / f'v{video_id:04d}.bin').write_bytes(encrypt(video_b))
+                total_video += len(video_b)
+
+                poster_id = None
+                pw = ph_h = None
+                if poster_jpg.exists():
+                    pid += 1
+                    poster_id = pid
+                    poster_full, (pw, ph_h) = compress(poster_jpg, FULL_EDGE, FULL_Q)
+                    poster_thumb, _ = compress(poster_jpg, THUMB_EDGE, THUMB_Q)
+                    (assets / f'f{poster_id:04d}.bin').write_bytes(encrypt(poster_full))
+                    (assets / f't{poster_id:04d}.bin').write_bytes(encrypt(poster_thumb))
+                    total_full += len(poster_full)
+                    total_thumb += len(poster_thumb)
+
+                videos.append({
+                    'id': video_id,
+                    'poster': poster_id,
+                    'caption': vid.get('caption', ''),
+                    'coords': vid.get('coords'),
+                    'duration': probe_duration(ffmpeg, src),
+                    'w': pw, 'h': ph_h,
+                })
+
+        has_map = bool(trip.get('coords')) or any(p['coords'] for p in photos) or any(v['coords'] for v in videos)
         story = trip.get('story', [])
         if isinstance(story, str):  # 允许直接给一段长文，按空行分段
             story = [s.strip() for s in story.replace('\r\n', '\n').split('\n\n') if s.strip()]
         story = [str(s).strip() for s in story if str(s).strip()]
 
-        has_map = bool(trip.get('coords')) or any(p['coords'] for p in photos)
         out_trips.append({
             'id': trip.get('id', f'trip-{len(out_trips) + 1}'),
             'title': trip['title'],
@@ -161,6 +258,7 @@ def main():
             'description': trip.get('description', ''),
             'story': story,
             'photos': photos,
+            'videos': videos,
             'has_map': has_map,
         })
 
@@ -184,8 +282,9 @@ def main():
     )
 
     n_photos = sum(len(t['photos']) for t in out_trips)
-    print(f'✦ 构建完成：{len(out_trips)} 次旅行，{n_photos} 张照片')
-    print(f'  大图 {total_full / 1e6:.1f} MB + 缩略图 {total_thumb / 1e6:.1f} MB（加密后）')
+    n_videos = sum(len(t['videos']) for t in out_trips)
+    print(f'✦ 构建完成：{len(out_trips)} 次旅行，{n_photos} 张照片，{n_videos} 个视频')
+    print(f'  大图 {total_full / 1e6:.1f} MB + 缩略图 {total_thumb / 1e6:.1f} MB + 视频 {total_video / 1e6:.1f} MB（加密后）')
     print(f'  输出目录: {dist}')
     if warnings:
         print('\n⚠ 提示:')
