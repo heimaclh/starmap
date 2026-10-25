@@ -453,7 +453,11 @@ def main():
     start_preview(bind_all=LAN_MODE)
     ThreadingHTTPServer.allow_reuse_address = True
     host = '0.0.0.0' if LAN_MODE else '127.0.0.1'
-    srv = ThreadingHTTPServer((host, ADMIN_PORT), Handler)
+    try:
+        srv = ThreadingHTTPServer((host, ADMIN_PORT), Handler)
+    except OSError:
+        sys.exit(f'✗ 端口 {ADMIN_PORT} 已被占用——多半已经有一个管理台在运行。\n'
+                 f'  先关掉旧的（在它的终端按 Ctrl+C，或关闭那个窗口），再运行本命令。')
 
     print(f'✦ 管理台    http://localhost:{ADMIN_PORT}  （Ctrl+C 退出）')
     if LAN_MODE:
