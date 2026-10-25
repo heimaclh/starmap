@@ -113,6 +113,28 @@ main { flex: 1; padding: 24px 28px 60px; max-width: 980px; }
 #geo-map { height: 340px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; margin: 10px 0; }
 #geo-readout { margin: 4px 0 10px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 
+/* ===== 手机触屏优化 ===== */
+@media (max-width: 720px) {
+  header { flex-direction: column; gap: 10px; padding: 12px; }
+  .actions { flex-wrap: wrap; justify-content: center; }
+  .actions button, .actions a { padding: 10px 16px; font-size: 14px; }  /* 44px+ 触控目标 */
+  .wrap { flex-direction: column; }
+  aside { width: 100%; border-right: none; border-bottom: 1px solid var(--line); padding: 12px; }
+  #trip-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 10px; }
+  #trip-list li { padding: 10px; }
+  main { padding: 16px 14px 40px; }
+  .fields .row { flex-direction: column; gap: 0; }
+  button, .dlg-actions button { min-height: 44px; }
+  #photo-grid { grid-template-columns: repeat(2, 1fr); }
+  #dropzone { padding: 20px 14px; }
+  #geo-map { height: 46vh; }
+  dialog { width: 94vw; padding: 18px; }
+  .ph-card .del { width: 32px; height: 32px; font-size: 15px; }  /* 删除键好按 */
+  .ph-card .geo { font-size: 12.5px; padding: 4px 10px; }
+  textarea, input { font-size: 16px; }  /* 防 iOS 聚焦缩放 */
+}
+button { touch-action: manipulation; }
+
 #btn-delete-trip { margin-top: 30px; }
 
 dialog {

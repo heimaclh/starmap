@@ -8,8 +8,50 @@
   let currentId = null;
   let dirtyPhotos = [];    // [{file, caption}]，点「保存修改」才写回
 
+  /* ---------- 访问码（--lan 手机模式） ---------- */
+  let authBusy = false;
+  async function ensureLogin() {
+    if (authBusy) return false;
+    authBusy = true;
+    try {
+      const saved = localStorage.getItem('starmap_access_code') || '';
+      if (saved) {
+        const r = await fetch('/api/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: saved }),
+        });
+        if (r.ok) return true;
+      }
+      // 首次：弹出输入框
+      for (let tries = 0; tries < 3; tries++) {
+        const code = prompt('请输入管理台访问码（电脑上启动 admin.py 时显示的 6 位数字）');
+        if (!code) return false;
+        const r = await fetch('/api/login', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: code.trim() }),
+        });
+        if (r.ok) {
+          localStorage.setItem('starmap_access_code', code.trim());
+          return true;
+        }
+        alert('访问码不对，请看电脑终端上打印的那一行');
+      }
+      return false;
+    } finally {
+      authBusy = false;
+    }
+  }
+
   async function api(path, opts = {}) {
     const res = await fetch(path, opts);
+    if (res.status === 401) {
+      const ok = await ensureLogin();
+      if (!ok) throw new Error('未登录');
+      const retry = await fetch(path, opts);
+      const data2 = await retry.json().catch(() => ({ ok: false, error: '响应解析失败' }));
+      if (!retry.ok || data2.ok === false) throw new Error(data2.error || `请求失败 ${retry.status}`);
+      return data2;
+    }
     const data = await res.json().catch(() => ({ ok: false, error: '响应解析失败' }));
     if (!res.ok || data.ok === false) throw new Error(data.error || `请求失败 ${res.status}`);
     return data;

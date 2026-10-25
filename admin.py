@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """
 星图 · 本地管理台
-    python3 admin.py
+    python3 admin.py           # 仅本机访问
+    python3 admin.py --lan     # 局域网访问（手机传照片用）：0.0.0.0 + 访问码
+
 管理界面  http://localhost:8124
 网站预览  http://localhost:8123（自动启动）
 
-只监听 127.0.0.1，局域网/外网无法访问；所有照片仍以明文留在本地 photos/，
+--lan 模式会打印手机访问地址和一次性访问码；所有照片仍以明文留在本地 photos/，
 发布到 GitHub 的永远是加密后的 dist/。
 """
+import argparse
 import functools
+import hashlib
 import json
 import mimetypes
 import os
 import re
+import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -32,6 +38,22 @@ SECRET = ROOT / 'secret.txt'
 ADMIN_PORT, PREVIEW_PORT = 8124, 8123
 ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'}
 SAFE_TRIP_ID = re.compile(r'^[a-z0-9][a-z0-9-]{0,40}$')
+COOKIE = 'starmap_admin'
+
+LAN_MODE = False
+ACCESS_TOKEN = None
+_login_fails = 0
+
+
+def lan_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('223.5.5.5', 80))
+        return s.getsockname()[0]
+    except Exception:
+        return '127.0.0.1'
+    finally:
+        s.close()
 
 
 def load_cfg():
@@ -146,6 +168,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
+        if not self.auth_ok(u):
+            return self.reply({'ok': False, 'need_login': True, 'error': '需要访问码'}, 401)
         if u.path == '/' or u.path.startswith('/admin'):
             return self.serve_admin_file(u.path or '/')
         if u.path == '/api/state':
@@ -162,6 +186,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
+        if u.path == '/api/login':
+            return self.api_login()
+        if not self.auth_ok(u):
+            return self.reply({'ok': False, 'need_login': True, 'error': '需要访问码'}, 401)
         try:
             if u.path == '/api/site':
                 return self.api_site()
@@ -218,6 +246,34 @@ class Handler(BaseHTTPRequestHandler):
             return self.api_error('not found', 404)
         ctype = mimetypes.guess_type(target.name)[0] or 'application/octet-stream'
         self.reply(target.read_bytes(), ctype=ctype)
+
+    # ---- 访问控制（--lan 模式） ----
+    def auth_ok(self, u):
+        """静态管理台页面不设防（无秘密），/api 与 /media 需要访问码 Cookie"""
+        if not LAN_MODE:
+            return True
+        if u.path == '/' or u.path.startswith('/admin') or u.path.startswith('/vendor/'):
+            return True
+        cookie = self.headers.get('Cookie', '')
+        m = re.search(re.escape(COOKIE) + r'=([^;]+)', cookie)
+        return bool(m and secrets.compare_digest(m.group(1), ACCESS_TOKEN))
+
+    def api_login(self):
+        global _login_fails
+        body = self.read_json()
+        if _login_fails >= 5:
+            time.sleep(1.0)
+        if not secrets.compare_digest(str(body.get('token', '')), ACCESS_TOKEN):
+            _login_fails += 1
+            return self.reply({'ok': False, 'error': '访问码不对'}, 401)
+        _login_fails = 0
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Set-Cookie', f'{COOKIE}={ACCESS_TOKEN}; HttpOnly; SameSite=Lax; Path=/; Max-Age={8 * 3600}')
+        self.send_header('Content-Length', '2')
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(b'{}')
 
     # ---- API ----
     def api_state(self):
@@ -372,10 +428,11 @@ class Handler(BaseHTTPRequestHandler):
         self.reply({'ok': ok, 'output': out})
 
 
-def start_preview():
+def start_preview(bind_all=False):
+    host = '0.0.0.0' if bind_all else '127.0.0.1'
     handler = functools.partial(SimpleHTTPRequestHandler, directory=str(ROOT / 'dist'))
     try:
-        srv = ThreadingHTTPServer(('127.0.0.1', PREVIEW_PORT), handler)
+        srv = ThreadingHTTPServer((host, PREVIEW_PORT), handler)
     except OSError:
         print(f'预览端口 {PREVIEW_PORT} 已被占用（预览服务应该已在运行）')
         return
@@ -384,10 +441,30 @@ def start_preview():
 
 
 def main():
-    start_preview()
+    global LAN_MODE, ACCESS_TOKEN
+    ap = argparse.ArgumentParser(description='星图管理台')
+    ap.add_argument('--lan', action='store_true', help='允许局域网访问（手机传照片）')
+    args = ap.parse_args()
+
+    LAN_MODE = args.lan
+    if LAN_MODE:
+        ACCESS_TOKEN = str(secrets.randbelow(900000) + 100000)  # 6 位数字访问码，每次启动随机
+
+    start_preview(bind_all=LAN_MODE)
     ThreadingHTTPServer.allow_reuse_address = True
-    srv = ThreadingHTTPServer(('127.0.0.1', ADMIN_PORT), Handler)
-    print(f'✦ 管理台    http://localhost:{ADMIN_PORT}  （只在本机可访问，Ctrl+C 退出）')
+    host = '0.0.0.0' if LAN_MODE else '127.0.0.1'
+    srv = ThreadingHTTPServer((host, ADMIN_PORT), Handler)
+
+    print(f'✦ 管理台    http://localhost:{ADMIN_PORT}  （Ctrl+C 退出）')
+    if LAN_MODE:
+        ip = lan_ip()
+        print()
+        print(f'  ┌─────────── 手机访问（同一 Wi-Fi） ───────────┐')
+        print(f'  │  地址:  http://{ip}:{ADMIN_PORT}')
+        print(f'  │  访问码: {ACCESS_TOKEN}')
+        print(f'  │  预览:  http://{ip}:{PREVIEW_PORT}')
+        print(f'  └──────────────────────────────────────────────┘')
+        print('  若手机打不开：Windows 需做一次端口转发，运行 ./mobile.sh 可自动配置')
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
