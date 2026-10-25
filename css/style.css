@@ -446,3 +446,24 @@ article.trip:nth-of-type(even)::before { left: -49px; }
   .trip, .wall-tile { opacity: 1; transform: none; }
   .hero-title .ltr { opacity: 1; }
 }
+
+/* ===== 触屏优化（无悬停的设备） ===== */
+@media (hover: none) {
+  /* 照片墙说明没有悬停可依，直接常显在照片下方 */
+  .wall-cap {
+    position: static; opacity: 1;
+    background: none; padding: 8px 4px 2px;
+  }
+  .wall-tile { border-radius: 10px; }
+  .wall-tile:hover img { transform: none; }
+  /* 时间线照片条去掉悬停放大，避免黏滞 */
+  .trip-strip .ph:hover img { transform: none; }
+  /* 灯箱按钮加大，好按 */
+  .lb-close, .lb-prev, .lb-next { width: 52px; height: 52px; font-size: 24px; }
+  .lb-close { top: max(14px, env(safe-area-inset-top)); right: 14px; }
+  /* 章节卡片去掉悬停位移 */
+  .trip:hover { transform: none; }
+}
+button { touch-action: manipulation; }
+/* 安全区：全面屏不顶到刘海 */
+#lightbox { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
