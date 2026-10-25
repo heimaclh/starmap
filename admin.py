@@ -14,6 +14,7 @@ import argparse
 import functools
 import hashlib
 import json
+import math
 import mimetypes
 import os
 import re
@@ -24,6 +25,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -54,6 +56,66 @@ def lan_ip():
         return '127.0.0.1'
     finally:
         s.close()
+
+
+AMAP_KEY_FILE = ROOT / 'amap_key.txt'
+
+
+def get_amap_key():
+    if os.environ.get('AMAP_KEY'):
+        return os.environ['AMAP_KEY'].strip()
+    if AMAP_KEY_FILE.exists():
+        return AMAP_KEY_FILE.read_text(encoding='utf-8').strip()
+    return ''
+
+
+def http_json(url, timeout=8, headers=None):
+    req = urllib.request.Request(url, headers={'User-Agent': 'starmap-admin/1.0', **(headers or {})})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode('utf-8'))
+
+
+# ---- WGS-84 ↔ GCJ-02（选点器底图为高德，搜索结果需纠偏后存储） ----
+def _tlat(x, y):
+    r = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * math.sqrt(abs(x))
+    r += (20 * math.sin(6 * x * math.pi) + 20 * math.sin(2 * x * math.pi)) * 2 / 3
+    r += (20 * math.sin(y * math.pi) + 40 * math.sin(y / 3 * math.pi)) * 2 / 3
+    r += (160 * math.sin(y / 12 * math.pi) + 320 * math.sin(y * math.pi / 30)) * 2 / 3
+    return r
+
+
+def _tlng(x, y):
+    r = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * math.sqrt(abs(x))
+    r += (20 * math.sin(6 * x * math.pi) + 20 * math.sin(2 * x * math.pi)) * 2 / 3
+    r += (20 * math.sin(x * math.pi) + 40 * math.sin(x / 3 * math.pi)) * 2 / 3
+    r += (150 * math.sin(x / 12 * math.pi) + 300 * math.sin(x / 30 * math.pi)) * 2 / 3
+    return r
+
+
+def _out_of_china(lat, lng):
+    return lng < 72.004 or lng > 137.8347 or lat < 0.8293 or lat > 55.8271
+
+
+def wgs2gcj(lat, lng):
+    if _out_of_china(lat, lng):
+        return lat, lng
+    a, ee = 6378245.0, 0.00669342162296594323
+    rad = lat / 180 * math.pi
+    magic = 1 - ee * math.sin(rad) ** 2
+    sqrt = math.sqrt(magic)
+    return (
+        lat + (_tlat(lng - 105, lat - 35) * 180) / ((a * (1 - ee)) / (magic * sqrt) * math.pi),
+        lng + (_tlng(lng - 105, lat - 35) * 180) / ((a / sqrt) * math.cos(rad) * math.pi),
+    )
+
+
+def gcj2wgs(lat, lng):
+    wlat, wlng = lat, lng
+    for _ in range(2):
+        glat, glng = wgs2gcj(wlat, wlng)
+        wlat -= glat - lat
+        wlng -= glng - lng
+    return wlat, wlng
 
 
 def load_cfg():
@@ -174,6 +236,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_admin_file(u.path or '/')
         if u.path == '/api/state':
             return self.api_state()
+        if u.path == '/api/geocode':
+            return self.api_geocode(q)
         if u.path in ('/vendor/leaflet.js', '/vendor/leaflet.css'):
             f = ROOT / 'site' / u.path.lstrip('/')
             ctype = 'application/javascript' if u.path.endswith('.js') else 'text/css'
@@ -283,7 +347,62 @@ class Handler(BaseHTTPRequestHandler):
     def api_state(self):
         cfg = load_cfg()
         self.reply({'site': cfg.get('site', {}), 'trips': cfg.get('trips', []),
-                    'has_secret': SECRET.exists()})
+                    'has_secret': SECRET.exists(), 'has_amap_key': bool(get_amap_key())})
+
+    def api_geocode(self, q):
+        """地点搜索：高德 POI（GCJ-02，转 WGS-84 存储）→ OpenStreetMap 兜底 → 坐标直跳"""
+        query = (q.get('q') or [''])[0].strip()[:80]
+        if not query:
+            return self.api_error('请输入搜索词')
+        has_key = bool(get_amap_key())
+
+        # 直接粘贴坐标：lat,lng
+        m = re.match(r'^(-?\d{1,3}(?:\.\d+)?)\s*[,，]\s*(-?\d{1,3}(?:\.\d+)?)$', query)
+        if m:
+            lat, lng = float(m.group(1)), float(m.group(2))
+            if abs(lat) > 90 or abs(lng) > 180:
+                return self.api_error('坐标超出范围')
+            return self.reply({'ok': True, 'source': 'coord', 'has_key': has_key,
+                               'results': [{'name': f'{lat:.5f}, {lng:.5f}', 'address': '粘贴的坐标',
+                                            'lat': lat, 'lng': lng}]})
+
+        results, source, error = [], None, None
+        if has_key:
+            try:
+                d = http_json('https://restapi.amap.com/v3/place/text?keywords='
+                              + urllib.parse.quote(query) + '&offset=8&page=1&key=' + get_amap_key())
+                if str(d.get('status')) == '1' and d.get('pois'):
+                    for p in d['pois'][:8]:
+                        try:
+                            lng, lat = (float(x) for x in p['location'].split(','))
+                        except (KeyError, ValueError):
+                            continue
+                        wlat, wlng = gcj2wgs(lat, lng)
+                        region = (p.get('pname') or '') + (p.get('cityname') or '') + (p.get('adname') or '')
+                        results.append({'name': p.get('name', ''),
+                                        'address': (region + ' ' + (p.get('address') or '')).strip(),
+                                        'lat': round(wlat, 6), 'lng': round(wlng, 6)})
+                    source = 'amap'
+                else:
+                    error = f"高德: {d.get('info') or '无结果'}"
+            except Exception as e:
+                error = f'高德请求失败: {e}'
+        if not results:
+            try:
+                d = http_json('https://nominatim.openstreetmap.org/search?q=' + urllib.parse.quote(query)
+                              + '&format=json&limit=6&accept-language=zh-CN',
+                              headers={'Accept-Language': 'zh-CN'})
+                for p in d:
+                    results.append({'name': (p.get('display_name') or '')[:70],
+                                    'address': p.get('type') or '',
+                                    'lat': float(p['lat']), 'lng': float(p['lon'])})
+                source = 'osm'
+            except Exception as e:
+                if not error:
+                    error = f'OpenStreetMap 搜索失败: {e}'
+        if not results:
+            return self.reply({'ok': False, 'error': error or '没有找到结果', 'has_key': has_key})
+        self.reply({'ok': True, 'source': source, 'has_key': has_key, 'results': results})
 
     def api_site(self):
         body = self.read_json()

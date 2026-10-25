@@ -72,9 +72,15 @@
 
 <dialog id="dlg-geo">
   <h3>📍 设置拍摄地点</h3>
-  <p class="muted">在地图上点击位置放置标记，可拖动微调；放得越大，位置越准。</p>
+  <p class="muted">搜索地点后微调，或直接在地图上点击；放得越大，位置越准。</p>
+  <div class="geo-search-row">
+    <input id="geo-search" placeholder="搜索地点，如：小东江 / 高椅岭（回车搜索）">
+    <button id="geo-search-btn">搜索</button>
+  </div>
+  <div id="geo-results" hidden></div>
   <div id="geo-map"></div>
   <p id="geo-readout" class="muted">未设置（点击地图放置标记）</p>
+  <p id="geo-keyhint" class="muted keyhint" hidden>💡 当前用 OpenStreetMap 兜底搜索，国内结果有限。想要精准的景点搜索：在 <b>lbs.amap.com</b> 免费注册并创建「Web服务」类型 Key，把 Key 存到项目根目录 <b>amap_key.txt</b> 文件里（一行），重启管理台即可。</p>
   <div class="dlg-actions">
     <button id="geo-clear" class="danger">清除定位</button>
     <span style="flex:1"></span>

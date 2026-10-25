@@ -2,6 +2,7 @@
 photos/
 trips.json
 secret.txt
+amap_key.txt
 __pycache__/
 *.pyc
 .DS_Store

@@ -114,6 +114,9 @@
 
   function openGeo(tripId, file, coords, tripCoords) {
     geoCtx = { tripId, file, marker: null, map: null, current: coords || null };
+    $('#geo-keyhint').hidden = !!(state && state.has_amap_key);
+    $('#geo-results').hidden = true;
+    $('#geo-search').value = '';
     $('#dlg-geo').showModal();
     setTimeout(() => {
       if (geoCtx.map) geoCtx.map.remove();
@@ -131,6 +134,36 @@
       setTimeout(() => map.invalidateSize(), 80);
       updateGeoReadout();
     }, 60);
+  }
+
+  /* 搜索：调后端 /api/geocode（高德优先），点结果跳图上放标记 */
+  function bindGeoSearch() {
+    const doSearch = async () => {
+      const q = $('#geo-search').value.trim();
+      if (!q) return;
+      const box = $('#geo-results');
+      box.hidden = false;
+      box.innerHTML = '<div class="geo-r muted">搜索中…</div>';
+      try {
+        const r = await api(`/api/geocode?q=${encodeURIComponent(q)}`);
+        if (!r.results.length) { box.innerHTML = '<div class="geo-r muted">没有找到结果</div>'; return; }
+        const src = r.source === 'amap' ? '高德' : r.source === 'osm' ? 'OpenStreetMap' : '';
+        box.innerHTML = (src ? `<div class="geo-r muted head">来源：${src}，点击结果放到地图上</div>` : '')
+          + r.results.map((x, i) => `
+          <div class="geo-r" data-i="${i}"><b>${esc(x.name)}</b><span>${esc(x.address || '')}</span></div>`).join('');
+        box.querySelectorAll('.geo-r[data-i]').forEach((el) => el.addEventListener('click', () => {
+          const x = r.results[+el.dataset.i];
+          const gcj = wgs2gcj(x.lat, x.lng);
+          geoCtx.map.setView(gcj, 14);
+          placeMarker(gcj);
+          box.hidden = true;
+        }));
+      } catch (e) {
+        box.innerHTML = `<div class="geo-r muted">${esc(e.message)}</div>`;
+      }
+    };
+    $('#geo-search-btn').addEventListener('click', doSearch);
+    $('#geo-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
   }
 
   function placeMarker(latlng) {
@@ -157,6 +190,7 @@
   }
 
   function bindGeo() {
+    bindGeoSearch();
     $('#geo-save').addEventListener('click', async () => {
       const w = geoWGS();
       if (!w) { toast('先在地图上点击一个位置'); return; }
