@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>✦ 星图管理台</title>
+<link rel="stylesheet" href="/vendor/leaflet.css">
+<link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+<header>
+  <div class="brand">✦ 星图管理台</div>
+  <div class="actions">
+    <button id="btn-settings">网站设置</button>
+    <button id="btn-build" class="primary">构建网站</button>
+    <button id="btn-publish" class="primary gold">构建并发布 ↗</button>
+    <a id="btn-preview" href="http://localhost:8123" target="_blank">打开预览 ↗</a>
+  </div>
+</header>
+
+<div class="wrap">
+  <aside>
+    <button id="btn-new" class="wide">＋ 新旅行</button>
+    <ul id="trip-list"></ul>
+  </aside>
+
+  <main id="editor">
+    <div class="empty" id="editor-empty">从左侧选择一次旅行，或新建一个 ✦</div>
+    <div id="editor-body" hidden>
+      <div class="fields">
+        <label>标题<input id="f-title"></label>
+        <div class="row">
+          <label>开始日期<input id="f-date" type="date"></label>
+          <label>结束日期（可选）<input id="f-date-end" type="date"></label>
+          <label>地点<input id="f-location" placeholder="云南 · 大理"></label>
+        </div>
+        <label>故事<textarea id="f-desc" rows="3" placeholder="一句话简介，显示在时间线卡片上"></textarea></label>
+        <label>详情正文<span class="muted">（点开章节后展示；空行分段，「## 」开头是小标题，「&gt; 」开头是引用；单独一行写「【图1】」「【图2】」即可把第几张照片插进这个位置，图文穿插）</span><textarea id="f-story" rows="10" placeholder="这一章的完整故事，想写多长写多长…&#10;&#10;那天下午我们到了海边…&#10;&#10;【图1】&#10;&#10;## 第二天&#10;换了新的一段…&#10;&#10;> 想被单独强调的一句话"></textarea></label>
+      </div>
+
+      <div class="photo-tools">
+        <h3>照片 <span id="photo-count" class="muted"></span></h3>
+        <button id="btn-save-trip" class="primary">保存修改</button>
+      </div>
+
+      <div id="dropzone">
+        <input type="file" id="file-input" multiple accept="image/*,.heic,.heif" hidden>
+        <b>把照片拖到这里，或点击选择文件</b>
+        <span class="muted">可多选 · 自动读取拍摄时间和 GPS 坐标 · 原图只留在本机</span>
+      </div>
+      <div id="photo-grid"></div>
+
+      <button id="btn-delete-trip" class="danger">删除这次旅行</button>
+    </div>
+  </main>
+</div>
+
+<dialog id="dlg-settings">
+  <h3>网站设置</h3>
+  <label>网站标题<input id="s-title"></label>
+  <label>副标题<input id="s-subtitle"></label>
+  <label>纪念日（显示"在一起的第 N 天"）<input id="s-anniversary" type="date"></label>
+  <label>页脚文字<input id="s-footer"></label>
+  <hr>
+  <label>加密暗号<input id="s-pass" type="password" placeholder="构建 / 发布时用来加密"></label>
+  <label class="check"><input type="checkbox" id="s-remember"> 记住暗号（存到本机 secret.txt，已被 git 忽略）</label>
+  <div class="dlg-actions">
+    <button id="btn-settings-cancel">取消</button>
+    <button id="btn-settings-save" class="primary">保存</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-geo">
+  <h3>📍 设置拍摄地点</h3>
+  <p class="muted">在地图上点击位置放置标记，可拖动微调；放得越大，位置越准。</p>
+  <div id="geo-map"></div>
+  <p id="geo-readout" class="muted">未设置（点击地图放置标记）</p>
+  <div class="dlg-actions">
+    <button id="geo-clear" class="danger">清除定位</button>
+    <span style="flex:1"></span>
+    <button id="geo-cancel">取消</button>
+    <button id="geo-save" class="primary">保存位置</button>
+  </div>
+</dialog>
+
+<div id="log" hidden><div class="log-head"><b>执行输出</b><button id="log-close">✕</button></div><pre id="log-text"></pre></div>
+<div id="toast" hidden></div>
+
+<script src="/vendor/leaflet.js"></script>
+<script src="/admin.js"></script>
+</body>
+</html>

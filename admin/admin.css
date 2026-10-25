@@ -1,0 +1,147 @@
+:root {
+  --bg: #070a16;
+  --panel: #0e1327;
+  --line: rgba(159, 178, 255, 0.16);
+  --ink: #e9edf8;
+  --sub: #94a0c2;
+  --gold: #ffd9a0;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  color-scheme: dark;  /* 让原生日期控件按深色渲染：日历图标可见、可正常编辑 */
+  background: radial-gradient(1000px 500px at 80% -10%, rgba(64, 84, 160, 0.18), transparent 60%), var(--bg);
+  color: var(--ink);
+  font: 14px/1.6 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  min-height: 100vh;
+}
+button, input, textarea {
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  outline: none;
+}
+button { cursor: pointer; transition: 0.2s; }
+button:hover { border-color: rgba(255, 217, 160, 0.5); }
+button.primary { border-color: rgba(159, 193, 255, 0.5); background: rgba(159, 193, 255, 0.12); }
+button.primary.gold { border-color: rgba(255, 217, 160, 0.55); background: rgba(255, 217, 160, 0.12); color: var(--gold); }
+button.danger { color: #ff9d9d; border-color: rgba(255, 120, 120, 0.4); background: rgba(255, 120, 120, 0.07); }
+button.wide { width: 100%; }
+.muted { color: var(--sub); font-weight: normal; font-size: 12.5px; }
+
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 14, 32, 0.7);
+  position: sticky; top: 0; z-index: 5; backdrop-filter: blur(8px);
+}
+.brand { font-size: 16px; letter-spacing: 2px; }
+.actions { display: flex; gap: 10px; align-items: center; }
+.actions a { color: var(--sub); text-decoration: none; padding: 8px 6px; }
+.actions a:hover { color: var(--ink); }
+
+.wrap { display: flex; min-height: calc(100vh - 61px); }
+aside {
+  width: 250px; flex-shrink: 0;
+  padding: 18px 14px;
+  border-right: 1px solid var(--line);
+}
+#trip-list { list-style: none; margin: 14px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+#trip-list li {
+  padding: 10px 12px; border-radius: 10px; cursor: pointer;
+  border: 1px solid transparent; transition: 0.15s;
+}
+#trip-list li:hover { background: rgba(255, 255, 255, 0.05); }
+#trip-list li.active { background: rgba(255, 217, 160, 0.1); border-color: rgba(255, 217, 160, 0.4); }
+#trip-list li .t { display: block; }
+#trip-list li .m { display: block; font-size: 12px; color: var(--sub); }
+
+main { flex: 1; padding: 24px 28px 60px; max-width: 980px; }
+.empty { color: var(--sub); text-align: center; margin-top: 120px; letter-spacing: 1px; }
+
+.fields label, #dlg-settings label { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; font-size: 13px; color: var(--sub); }
+.fields input, .fields textarea, #dlg-settings input { width: 100%; background: rgba(4, 6, 16, 0.55); color: var(--ink); }
+.fields .row { display: flex; gap: 14px; }
+.fields .row label { flex: 1; }
+.fields textarea { resize: vertical; }
+
+.photo-tools { display: flex; align-items: center; justify-content: space-between; margin: 8px 0 12px; }
+.photo-tools h3 { margin: 0; font-size: 15px; letter-spacing: 1px; }
+
+#dropzone {
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  padding: 26px;
+  text-align: center;
+  display: flex; flex-direction: column; gap: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+  margin-bottom: 18px;
+}
+#dropzone:hover, #dropzone.over { border-color: rgba(255, 217, 160, 0.6); background: rgba(255, 217, 160, 0.05); }
+
+#photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.ph-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.ph-card .box { aspect-ratio: 1; background: rgba(4, 6, 16, 0.6); position: relative; }
+.ph-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ph-card .geo { position: absolute; top: 8px; left: 8px; background: rgba(4, 6, 13, 0.75); color: var(--gold); font-size: 11.5px; padding: 2px 8px; border-radius: 99px; border: 1px solid rgba(255, 217, 160, 0.4); }
+.ph-card .del {
+  position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; padding: 0;
+  border-radius: 50%; font-size: 13px; line-height: 1;
+  background: rgba(4, 6, 13, 0.75);
+}
+.ph-card .geo {
+  position: absolute; top: 8px; left: 8px; cursor: pointer;
+  padding: 2px 9px; font-size: 11.5px; border-radius: 99px;
+  border: 1px solid var(--line); background: rgba(4, 6, 13, 0.78); color: var(--sub);
+  transition: 0.2s;
+}
+.ph-card .geo.on { color: var(--gold); border-color: rgba(255, 217, 160, 0.45); }
+.ph-card .geo:hover { border-color: rgba(255, 217, 160, 0.8); color: var(--gold); }
+.ph-card textarea { margin: 8px 10px 10px; font-size: 12.5px; resize: vertical; min-height: 56px; line-height: 1.6; }
+
+#geo-map { height: 340px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; margin: 10px 0; }
+#geo-readout { margin: 4px 0 10px; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+#btn-delete-trip { margin-top: 30px; }
+
+dialog {
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 16px;
+  padding: 24px; width: min(430px, 92vw);
+}
+dialog::backdrop { background: rgba(3, 5, 12, 0.7); backdrop-filter: blur(4px); }
+dialog h3 { margin: 0 0 16px; }
+dialog hr { border: none; border-top: 1px solid var(--line); margin: 6px 0 16px; }
+dialog label.check { flex-direction: row; align-items: center; gap: 8px; }
+dialog label.check input { width: auto; }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+
+#log {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  width: min(760px, 94vw);
+  background: rgba(10, 14, 32, 0.95);
+  border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  z-index: 20;
+}
+.log-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.log-head button { width: 26px; height: 26px; padding: 0; border-radius: 50%; }
+#log-text { margin: 0; padding: 14px 16px; max-height: 220px; overflow: auto; white-space: pre-wrap; font: 12.5px/1.7 ui-monospace, Consolas, monospace; color: #b8c6ee; }
+
+#toast {
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+  background: rgba(255, 217, 160, 0.14); color: var(--gold);
+  border: 1px solid rgba(255, 217, 160, 0.45); border-radius: 99px;
+  padding: 8px 22px; z-index: 30; backdrop-filter: blur(6px);
+}

@@ -1,0 +1,7 @@
+# 原始照片与明文内容只留在本地，绝不进仓库（仓库里只有加密后的文件）
+photos/
+trips.json
+secret.txt
+__pycache__/
+*.pyc
+.DS_Store
